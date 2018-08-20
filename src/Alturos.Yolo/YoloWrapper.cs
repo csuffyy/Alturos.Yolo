@@ -14,7 +14,10 @@ namespace Alturos.Yolo
         public const int MaxObjects = 1000;
         private const string YoloLibraryCpu = @"x64\yolo_cpp_dll_cpu.dll";
         private const string YoloLibraryGpu = @"x64\yolo_cpp_dll_gpu.dll";
+
         private Dictionary<int, string> _objectType = new Dictionary<int, string>();
+        private ImageAnalyzer _imageAnalyzer = new ImageAnalyzer();
+
         public DetectionSystem DetectionSystem = DetectionSystem.Unknown;
         public EnvironmentReport EnvironmentReport { get; private set; }
 
@@ -159,18 +162,28 @@ namespace Alturos.Yolo
             return report;
         }
 
-        public IEnumerable<YoloItem> Detect(string filename)
+        public IEnumerable<YoloItem> Detect(string filepath)
         {
+            if (!File.Exists(filepath))
+            {
+                throw new FileNotFoundException("Cannot find the file", filepath);
+            }
+
             var container = new BboxContainer();
             var count = 0;
             switch (this.DetectionSystem)
             {
                 case DetectionSystem.CPU:
-                    count = DetectImageCpu(filename, ref container);
+                    count = DetectImageCpu(filepath, ref container);
                     break;
                 case DetectionSystem.GPU:
-                    count = DetectImageGpu(filename, ref container);
+                    count = DetectImageGpu(filepath, ref container);
                     break;
+            }
+
+            if (count == -1)
+            {
+                throw new NotImplementedException("c++ dll compiled incorrectly");
             }
 
             return this.Convert(container);
@@ -178,8 +191,12 @@ namespace Alturos.Yolo
 
         public IEnumerable<YoloItem> Detect(byte[] imageData)
         {
-            var container = new BboxContainer();
+            if (!this._imageAnalyzer.IsValidImageFormat(imageData))
+            {
+                throw new Exception("Invalid image data, wrong image format");
+            }
 
+            var container = new BboxContainer();
             var size = Marshal.SizeOf(imageData[0]) * imageData.Length;
             var pnt = Marshal.AllocHGlobal(size);
 
@@ -196,6 +213,11 @@ namespace Alturos.Yolo
                     case DetectionSystem.GPU:
                         count = DetectImageGpu(pnt, imageData.Length, ref container);
                         break;
+                }
+
+                if (count == -1)
+                {
+                    throw new NotImplementedException("c++ dll compiled incorrectly");
                 }
             }
             catch (Exception exception)
